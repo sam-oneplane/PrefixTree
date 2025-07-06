@@ -20,6 +20,7 @@ class PrefixTree {
 
     std::shared_ptr<TrieNode> root;
     mutable std::mutex mu;
+    std::condition_variable cond; 
 
     void collect_words(std::shared_ptr<TrieNode> node, 
                         const std::string &prefix, 
@@ -81,8 +82,8 @@ public:
         // obtain raw pointer to Node owned by Root
         std::shared_ptr<TrieNode> current = root;
         std::cout << "inserting " << word << std::endl;
-        for (char c : word) {
-            std::lock_guard<std::mutex> guard(mu);
+        std::lock_guard<std::mutex> guard(mu);
+        for (char c : word) {           
             if (current->children.find(c) ==  current->children.end()) { // didn't find c make entry with unique_ptr
                 current->children[c] = std::make_shared<TrieNode>();
             }
@@ -90,6 +91,7 @@ public:
             current = current->children[c] ;
         }
         current->terminal = true;
+        cond.notify_one();
     }
 
     bool start_with_prefix(const std::string &prefix) {
@@ -115,8 +117,11 @@ public:
         std::vector<std::string> results;
         std::shared_ptr<TrieNode> current = root;
 
-        std::lock_guard<std::mutex> guard(mu);
+        std::unique_lock<std::mutex> guard(mu);
+        cond.wait(guard, [this](){return !root->children.empty();});
+
         std::cout << "collecting by " << prefix << std::endl;
+        
         if (!will_update_trie(prefix, current))
             return results;
         collect_words(current, prefix, results);
