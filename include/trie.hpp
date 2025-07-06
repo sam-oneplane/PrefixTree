@@ -3,11 +3,15 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <mutex>
+/*
+TriaNode 
+*/
 
 class TrieNode {
 public:
     std::unordered_map<char, std::shared_ptr<TrieNode>> children;
-    bool terminal;
+    bool terminal; // if true signal a word in the tree node 
     
     TrieNode() : terminal(false) {}
 };
@@ -15,6 +19,7 @@ public:
 class PrefixTree {
 
     std::shared_ptr<TrieNode> root;
+    mutable std::mutex mu;
 
     void collect_words(std::shared_ptr<TrieNode> node, 
                         const std::string &prefix, 
@@ -70,11 +75,14 @@ public:
 
     PrefixTree(): root(std::make_shared<TrieNode>()){};
 
+    PrefixTree(const PrefixTree& other) {root = other.root;}
+
     void insert(const std::string & word) {
         // obtain raw pointer to Node owned by Root
         std::shared_ptr<TrieNode> current = root;
-        
+        std::cout << "inserting " << word << std::endl;
         for (char c : word) {
+            std::lock_guard<std::mutex> guard(mu);
             if (current->children.find(c) ==  current->children.end()) { // didn't find c make entry with unique_ptr
                 current->children[c] = std::make_shared<TrieNode>();
             }
@@ -85,13 +93,17 @@ public:
     }
 
     bool start_with_prefix(const std::string &prefix) {
+        
         std::shared_ptr<TrieNode> current  = root;
 
+        std::lock_guard<std::mutex> guard(mu);
         return will_update_trie(prefix, current);
     }
 
     bool search(const std::string & word) {
         std::shared_ptr<TrieNode> current = root;
+
+        std::lock_guard<std::mutex> guard(mu);
         if (!will_update_trie(word, current))
             return false;
         return current->terminal;
@@ -103,13 +115,18 @@ public:
         std::vector<std::string> results;
         std::shared_ptr<TrieNode> current = root;
 
+        std::lock_guard<std::mutex> guard(mu);
+        std::cout << "collecting by " << prefix << std::endl;
         if (!will_update_trie(prefix, current))
             return results;
         collect_words(current, prefix, results);
+        std::this_thread::sleep_for(std::chrono::milliseconds(3));
         return results;
     }
 
     bool remove(const std::string & word) {
+        std::lock_guard<std::mutex> guard(mu);
+        std::cout << "removing " << word << std::endl;
         return remove_halper(root, word, 0);
     }
 
